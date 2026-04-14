@@ -5,7 +5,7 @@ from analyzer.ui.filters import render_filters
 from analyzer.db.queries import get_events, get_event_stats
 from analyzer.handlers.decoder import decode_events_df
 from analyzer.handlers.timeline_builder import build_timeline
-from analyzer.handlers.export import export_to_docx, export_to_xlsx, export_to_pdf, export_to_csv
+from analyzer.handlers.export import export_to_docx, export_to_xlsx, export_to_csv
 
 
 def render_main_page():
@@ -93,7 +93,6 @@ def render_main_page():
                     # Генерируем файлы для экспорта
                     docx_data = export_to_docx(timeline_df, filters['train_id'], filters['dt_from'], filters['dt_to'])
                     xlsx_data = export_to_xlsx(timeline_df, filters['train_id'], filters['dt_from'], filters['dt_to'])
-                    pdf_data = export_to_pdf(timeline_df, filters['train_id'], filters['dt_from'], filters['dt_to'])
                     csv_data = export_to_csv(timeline_df, filters['train_id'], filters['dt_from'], filters['dt_to'])
 
                     col1, col2, col3, col4 = st.columns(4)
@@ -124,20 +123,8 @@ def render_main_page():
                         else:
                             st.error("Ошибка создания XLSX")
 
-                    with col3:
-                        if pdf_data:
-                            st.download_button(
-                                label="📑 Экспорт в PDF",
-                                data=pdf_data,
-                                file_name=f"protocol_{filters['train_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                                mime="application/pdf",
-                                use_container_width=True,
-                                key="download_pdf_unique"
-                            )
-                        else:
-                            st.error("Ошибка создания PDF")
 
-                    with col4:
+                    with col3:
                         if csv_data:
                             st.download_button(
                                 label="📋 Экспорт в CSV",
