@@ -11,6 +11,8 @@ from analyzer.handlers.export import (
     export_human_readable_docx,
     export_to_xlsx,
     export_to_csv,
+    build_human_readable_protocol_text,
+    export_text_to_docx,
 )
 
 
@@ -115,9 +117,48 @@ def render_main_page():
 
                         st.dataframe(display_df, use_container_width=True)
 
+                    # Предпросмотр и редактирование человекочитаемого протокола
+                    st.markdown("---")
+                    with st.expander("Предпросмотр и редактирование протокола", expanded=False):
+                        protocol_text = build_human_readable_protocol_text(
+                            timeline_df,
+                            filters['train_id'],
+                            filters['dt_from'],
+                            filters['dt_to']
+                        )
+
+                        st.caption(
+                            "Ниже отображается человекочитаемая версия протокола. "
+                            "Текст можно отредактировать вручную и скачать в формате DOCX."
+                        )
+
+                        edited_protocol_text = st.text_area(
+                            "Текст протокола",
+                            value=protocol_text,
+                            height=500,
+                            key="edited_protocol_text"
+                        )
+
+                        edited_docx_data = export_text_to_docx(edited_protocol_text)
+
+                        if edited_docx_data:
+                            st.download_button(
+                                label="Скачать отредактированный DOCX",
+                                data=edited_docx_data,
+                                file_name=(
+                                    f"protocol_edited_{filters['train_id']}_"
+                                    f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                                ),
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                use_container_width=True,
+                                key="download_edited_docx"
+                            )
+                        else:
+                            st.error("Ошибка формирования отредактированного DOCX")    
+
                     # Экспорт протокола
                     st.markdown("---")
-                    st.subheader("Экспорт протокола")
+                    st.subheader("Экспорт файлов")
 
                     export_options = {
                         "DOCX (табличный протокол)": "docx_table",

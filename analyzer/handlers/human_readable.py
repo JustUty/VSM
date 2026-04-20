@@ -137,12 +137,12 @@ def build_human_readable_entry(row: dict[str, Any]) -> str:
     lines = [header]
 
     if start_time:
-        lines.append(f"Время поступления сообщения: {start_time}.")
-        lines.append(f"Описание события: {activation_text}.")
+        #lines.append(f"Время поступления сообщения: {start_time}.")
+        lines.append(f"{start_time} {activation_text}.")
 
     if end_time and end_time != "Активно до сих пор":
-        lines.append(f"Время завершения сообщения: {end_time}.")
-        lines.append(f"Статус завершения: {deactivation_text}.")
+        #lines.append(f"Время завершения сообщения: {end_time}.")
+        lines.append(f"С {end_time} {deactivation_text}.")
         if duration_human:
             lines.append(f"Продолжительность активности: {duration_human}.")
     else:

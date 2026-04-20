@@ -65,6 +65,8 @@ def build_human_readable_entry(row):
     activation_text = clean_text(templates.get('kurztext_3', ''))
     deactivation_text = clean_text(templates.get('kurztext_4', ''))
 
+    lines = []
+
     header_parts = []
     if code:
         header_parts.append(f'Код ДС {code}')
@@ -73,20 +75,20 @@ def build_human_readable_entry(row):
     if carnumber:
         header_parts.append(f'вагон {carnumber}')
 
-    lines = []
     if header_parts:
         lines.append(', '.join(header_parts) + '.')
 
-    if activation_time_str:
-        lines.append(f'Время поступления сообщения: {activation_time_str}.')
-        if activation_text:
-            lines.append(f'Описание события: {activation_text}.')
+    if activation_time_str and activation_text:
+        lines.append(f'{activation_time_str} {activation_text}.')
+    elif activation_time_str:
+        lines.append(f'{activation_time_str} Зафиксировано поступление сообщения.')
 
     if deactivation_time is not None and not pd.isna(deactivation_time):
-        if deactivation_time_str:
-            lines.append(f'Время завершения сообщения: {deactivation_time_str}.')
-        if deactivation_text:
-            lines.append(f'Статус завершения: {deactivation_text}.')
+        if deactivation_time_str and deactivation_text:
+            lines.append(f'С {deactivation_time_str} {deactivation_text}.')
+        elif deactivation_time_str:
+            lines.append(f'С {deactivation_time_str} сообщение более не активно.')
+
         if duration_str:
             lines.append(f'Продолжительность активности: {duration_str}.')
     else:
@@ -94,7 +96,64 @@ def build_human_readable_entry(row):
 
     return '\n'.join(lines)
 
+def build_human_readable_protocol_text(timeline_df, train_name, dt_from, dt_to):
+    """
+    Формирует полный человекочитаемый протокол в виде одного текста.
+    Этот текст можно показывать в предпросмотре и редактировать в интерфейсе.
+    """
+    lines = [
+        "Эксплуатационный протокол",
+        "",
+        f"Поезд: {train_name}",
+        f"Период: с {format_datetime(dt_from)} по {format_datetime(dt_to)}",
+        f"Дата формирования: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+        "",
+    ]
 
+    if timeline_df.empty:
+        lines.append("За указанный период диагностические события не обнаружены.")
+        return '\n'.join(lines)
+
+    for _, row in timeline_df.iterrows():
+        entry_text = build_human_readable_entry(row)
+        lines.append(entry_text)
+        lines.append("")
+
+    return '\n'.join(lines).strip()
+
+
+def export_text_to_docx(protocol_text, file_title="Эксплуатационный протокол"):
+    """
+    Экспортирует произвольный отредактированный текст протокола в DOCX.
+    Каждая непустая строка становится отдельным абзацем.
+    """
+    try:
+        doc = Document()
+
+        lines = str(protocol_text).splitlines()
+
+        if lines:
+            first_line = lines[0].strip()
+            if first_line:
+                title = doc.add_heading(first_line, 0)
+                title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                lines = lines[1:]
+
+        for line in lines:
+            if line.strip():
+                doc.add_paragraph(clean_text(line))
+            else:
+                doc.add_paragraph("")
+
+        doc_bytes = io.BytesIO()
+        doc.save(doc_bytes)
+        doc_bytes.seek(0)
+        return doc_bytes
+    except Exception as e:
+        print(f"EDITED DOCX export error: {e}")
+        return None
+    
+    
 def export_to_docx(timeline_df, train_name, dt_from, dt_to):
     """Экспорт хронологии в DOCX (табличный формат)"""
     try:
@@ -174,8 +233,8 @@ def export_human_readable_docx(timeline_df, train_name, dt_from, dt_to):
             for idx, (_, row) in enumerate(timeline_df.iterrows(), start=1):
                 entry_text = build_human_readable_entry(row)
 
-                p_num = doc.add_paragraph()
-                p_num.add_run(f'Событие {idx}.').bold = True
+                #p_num = doc.add_paragraph()
+                #p_num.add_run(f'Событие {idx}.').bold = True
 
                 for line in entry_text.split('\n'):
                     if line.strip():
