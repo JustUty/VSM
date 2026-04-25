@@ -54,7 +54,7 @@ def load_trains_data():
 
 def render_train_selector(key_prefix, trains_data, default_train_id=None):
     """
-    Рендерит селектор выбора поезда.
+    Рендерит селектор выбора поезда
     Возвращает train_id
     """
     desiro_trains = trains_data['desiro_trains']
@@ -163,6 +163,55 @@ def render_train_selector(key_prefix, trains_data, default_train_id=None):
         return train_id
 
 
+def render_column_selector(default_columns=None):
+    """
+    Рендерит мультивыбор колонок для отображения
+    Возвращает список выбранных колонок
+    """
+    if default_columns is None:
+        default_columns = ['train_id', 'carnumber', 'messagecode', 'event_type', 'timestamp', 'message_text']
+
+    all_columns_map = {
+        'train_id': 'Номер поезда',
+        'carnumber': 'Вагон',
+        'messagecode': 'Код ДС',
+        'event_type': 'Тип события',
+        'timestamp': 'Время события',
+        'message_text': 'Описание',
+        'parsingtime': 'Время парсинга'
+    }
+
+    with st.expander("⚙️ Настроить отображаемые колонки"):
+        st.caption("Выберите колонки, которые будут отображаться в таблице и экспортироваться")
+
+        # Используем отдельный ключ для хранения выбора
+        if "selected_columns" not in st.session_state:
+            st.session_state.selected_columns = default_columns
+
+        selected_keys = st.multiselect(
+            "Отображаемые колонки",
+            options=list(all_columns_map.keys()),
+            format_func=lambda x: all_columns_map[x],
+            default=st.session_state.selected_columns,
+            key="column_selector_widget"
+        )
+
+        # Обновляем session_state
+        st.session_state.selected_columns = selected_keys
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Все колонки", width="stretch"):
+                st.session_state.selected_columns = list(all_columns_map.keys())
+                st.rerun()
+        with col2:
+            if st.button("Сбросить", width="stretch"):
+                st.session_state.selected_columns = default_columns
+                st.rerun()
+
+        return st.session_state.selected_columns
+
+
 def render_filters():
     if "submitted_filters" not in st.session_state:
         st.session_state.submitted_filters = None
@@ -258,20 +307,12 @@ def render_filters():
         if "demo_dt_to" not in st.session_state:
             st.session_state.demo_dt_to = default_to
 
-        # Кнопка "Демонстрация" (двухчасовой интервал за вчерашний день)
-        # Кнопка "Демонстрация" (пятичасовой интервал за вчерашний день)
-        # Узкая кнопка "Демонстрация" (например, 30% ширины)
-        # Без CSS, просто управляем шириной через колонки
-        # Вместо узкой кнопки, делаем её шире, как datetime_input
-        demo_col1, demo_col2 = st.columns([100, 2])
-        with demo_col1:
-            demo_btn = st.button(
-                "Демонстрация",
-                help="Установить интервал: вчера 00:00 → вчера 05:00",
-                use_container_width=True
-            )
-        with demo_col2:
-            st.write("")  # Пустота для баланса
+        # Кнопка "Демонстрация"
+        demo_btn = st.button(
+            "Демонстрация",
+            help="Установить интервал: позавчера 13:00 → позавчера 17:00",
+            width="stretch"
+        )
 
         if demo_btn:
             # Устанавливаем: позавчера с 13:00:00 до 17:00:00
@@ -279,12 +320,9 @@ def render_filters():
                 hour=13, minute=0, second=0, microsecond=0
             ) - timedelta(days=2)
             st.session_state.demo_dt_from = day_before_yesterday
-            st.session_state.demo_dt_to = day_before_yesterday + timedelta(hours=4)  # 13:00 + 4 часа = 17:00
-            # Принудительно обновляем значения в сессии для rerender
-            st.session_state.dt_from_input = st.session_state.demo_dt_from
-            st.session_state.dt_to_input = st.session_state.demo_dt_to
+            st.session_state.demo_dt_to = day_before_yesterday + timedelta(hours=4)
 
-        # Отображаем datetime_input с привязкой к session_state через key
+        # Отображаем datetime_input
         dt_from = st.datetime_input(
             "Начальная дата и время",
             value=st.session_state.demo_dt_from,

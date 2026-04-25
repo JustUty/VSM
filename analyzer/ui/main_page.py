@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-from analyzer.ui.filters import render_filters
+from analyzer.ui.filters import render_filters, render_column_selector
 from analyzer.db.queries import get_events, get_trains_list
 from analyzer.handlers.decoder import decode_events_df
 from analyzer.handlers.timeline_builder import build_timeline
@@ -13,6 +13,7 @@ from analyzer.handlers.export import (
     export_to_csv,
     build_human_readable_protocol_text,
     export_text_to_docx,
+    get_column_names_map
 )
 
 
@@ -51,7 +52,7 @@ def render_main_page():
 
                 if not events_df_1.empty:
                     events_df_1 = decode_events_df(events_df_1)
-                    events_df_1['train_id'] = train_id_1  # Добавляем train_id если его нет
+                    events_df_1['train_id'] = train_id_1
                     timeline_df_1 = build_timeline(events_df_1)
                 else:
                     timeline_df_1 = pd.DataFrame()
@@ -97,6 +98,14 @@ def render_main_page():
                     # Подменяем train_id на человекочитаемое название
                     timeline_df['train_id'] = timeline_df['train_id'].map(train_mapping).fillna(timeline_df['train_id'])
 
+                    # Инициализируем выбор колонок, если ещё нет
+                    default_columns = ['train_id', 'carnumber', 'messagecode', 'event_type', 'timestamp',
+                                       'message_text']
+                    if "selected_columns" not in st.session_state:
+                        st.session_state.selected_columns = default_columns
+
+                    column_names_map = get_column_names_map()
+
                     # Статистика
                     with st.expander("Статистика", expanded=True):
                         col1, col2, col3, col4 = st.columns(4)
@@ -122,53 +131,60 @@ def render_main_page():
                         with st.expander("Статистика по поездам", expanded=True):
                             stats_by_train = timeline_df.groupby('train_id').agg({
                                 'messagecode': 'count',
-                                'duration_str': lambda x: (x != 'Активно до сих пор').sum()
-                            }).rename(columns={'messagecode': 'Количество событий', 'duration_str': 'Завершённых событий'})
+                            }).rename(columns={'messagecode': 'Количество событий'})
                             st.dataframe(stats_by_train, use_container_width=True)
 
                     # Хронология эксплуатационных событий
-                    # Хронология эксплуатационных событий
                     with st.expander("Хронология эксплуатационных событий", expanded=True):
                         if not timeline_df.empty:
-                            display_columns = [
-                                'train_id',
-                                'carnumber',
-                                'messagecode',
-                                'event_type',
-                                'timestamp',
-                                'message_text'
-                            ]
+                            # Выбор колонок
+                            selected_columns = render_column_selector(st.session_state.selected_columns)
 
-                            column_renames = {
-                                'train_id': 'Номер поезда',
-                                'carnumber': 'Вагон',
-                                'code': 'Код ДС',
-                                'event_type': 'Тип события',
-                                'timestamp': 'Время события',
-                                'message_text': 'Описание'
-                            }
+                            # Формируем таблицу только с выбранными колонками
+                            if selected_columns:
+                                available_cols = [col for col in selected_columns if col in timeline_df.columns]
+                                display_timeline = timeline_df[available_cols].copy()
 
-                            # Проверяем наличие колонок
-                            existing_columns = [
-                                col for col in display_columns if col in timeline_df.columns
-                            ]
+                                # Преобразуем event_type в человекочитаемый вид
+                                if 'event_type' in display_timeline.columns:
+                                    event_type_map = {
+                                        'activation': 'Активация',
+                                        'deactivation': 'Деактивация',
+                                        'still_active_marker': '⚠️ Активно до сих пор'
+                                    }
+                                    display_timeline['event_type'] = display_timeline['event_type'].map(
+                                        event_type_map).fillna(display_timeline['event_type'])
 
-                            # Преобразуем event_type в человекочитаемый вид для отображения
-                            display_timeline = timeline_df[existing_columns].copy()
-                            if 'event_type' in display_timeline.columns:
-                                event_type_map = {
-                                    'activation': 'Активация',
-                                    'deactivation': 'Деактивация',
-                                    'still_active_marker': '⚠️ Активно до сих пор'
-                                }
-                                display_timeline['event_type'] = display_timeline['event_type'].map(
-                                    event_type_map).fillna(display_timeline['event_type'])
+                                # Форматируем timestamp
+                                if 'timestamp' in display_timeline.columns:
+                                    display_timeline['timestamp'] = display_timeline['timestamp'].apply(
+                                        lambda x: x.strftime('%d.%m.%Y %H:%M:%S') if pd.notna(x) else ''
+                                    )
 
-                            display_timeline = display_timeline.rename(columns=column_renames)
+                                # Переименовываем колонки для отображения
+                                display_timeline = display_timeline.rename(columns=column_names_map)
 
-                            st.dataframe(display_timeline, use_container_width=True)
+                                st.dataframe(display_timeline, use_container_width=True)
+                            else:
+                                st.warning("Не выбрано ни одной колонки для отображения")
                         else:
                             st.info("Нет сформированных записей в хронологии")
+
+                    # Таблица событий (сырые данные)
+                    with st.expander("Диагностические сообщения (сырые данные)"):
+                        if 'events_df_1' in locals() and not events_df_1.empty:
+                            display_df = events_df_1[
+                                ['timestamp', 'messagecode', 'message_text', 'carnumber', 'messagestate']
+                            ].rename(columns={
+                                'timestamp': 'Время',
+                                'messagecode': 'Код ДС',
+                                'message_text': 'Сообщение',
+                                'carnumber': 'Вагон',
+                                'messagestate': 'Активно'
+                            })
+                            st.dataframe(display_df, use_container_width=True)
+                        else:
+                            st.info("Нет данных для отображения")
 
                     # Предпросмотр и редактирование человекочитаемого протокола
                     st.markdown("---")
@@ -210,13 +226,12 @@ def render_main_page():
                                     f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
                                 ),
                                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                use_container_width=True,
+                                width="stretch",
                                 key="download_edited_docx"
                             )
                         else:
                             st.error("Ошибка формирования отредактированного DOCX")
 
-                    # Экспорт протокола
                     # Экспорт протокола
                     st.markdown("---")
                     st.subheader("Экспорт файлов")
@@ -247,12 +262,16 @@ def render_main_page():
                     else:
                         train_names = train_mapping.get(train_id_1, train_id_1)
 
+                    # Получаем выбранные колонки из session_state
+                    selected_cols = st.session_state.get('selected_columns', None)
+
                     if selected_export_type == "docx_table":
                         export_data = export_to_docx(
                             timeline_df,
                             train_names,
                             filters['dt_from'],
-                            filters['dt_to']
+                            filters['dt_to'],
+                            selected_columns=selected_cols
                         )
                         export_file_name = f"protocol_table_{train_names}_{timestamp_suffix}.docx"
                         export_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -262,7 +281,8 @@ def render_main_page():
                             timeline_df,
                             train_names,
                             filters['dt_from'],
-                            filters['dt_to']
+                            filters['dt_to'],
+                            selected_columns=selected_cols
                         )
                         export_file_name = f"protocol_human_{train_names}_{timestamp_suffix}.docx"
                         export_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -272,7 +292,8 @@ def render_main_page():
                             timeline_df,
                             train_names,
                             filters['dt_from'],
-                            filters['dt_to']
+                            filters['dt_to'],
+                            selected_columns=selected_cols
                         )
                         export_file_name = f"protocol_{train_names}_{timestamp_suffix}.xlsx"
                         export_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -282,7 +303,8 @@ def render_main_page():
                             timeline_df,
                             train_names,
                             filters['dt_from'],
-                            filters['dt_to']
+                            filters['dt_to'],
+                            selected_columns=selected_cols
                         )
                         export_file_name = f"protocol_{train_names}_{timestamp_suffix}.csv"
                         export_mime = "text/csv"
@@ -293,7 +315,7 @@ def render_main_page():
                             data=export_data,
                             file_name=export_file_name,
                             mime=export_mime,
-                            width="stretch",  # Исправлено: use_container_width заменён на width
+                            width="stretch",
                             key="download_protocol_unified"
                         )
                     else:
@@ -316,9 +338,7 @@ def render_main_page():
             3. Выберите **серию и номер** (для Desiro) или **конкретный поезд** (для Velaro)
             4. Укажите **временной интервал** (начало и конец периода)
             5. Нажмите кнопку **«Сформировать протокол»**
-            6. Система отобразит:
-               - Статистику по событиям
-               - Хронологию эксплуатационных событий с продолжительностью
+            6. При необходимости настройте **отображаемые колонки** через кнопку ⚙️
             7. Выберите нужный формат в разделе **«Экспорт протокола»**
             8. Нажмите кнопку **«Скачать протокол»**
             """)
