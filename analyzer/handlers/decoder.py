@@ -1,15 +1,15 @@
-import psycopg2
 import pandas as pd
-
-DB_CONFIG = {
-    "host": "217.198.83.165",
-    "port": 9030,
-    "database": "vsm_service_trains",
-    "user": "tmp",
-    "password": "ngqU-5Gk9J"
-}
+from functools import lru_cache
+from analyzer.db.config import DBConfig
+import psycopg2
 
 _codes_cache = None
+
+
+def _get_connection():
+    """Создаёт подключение к БД с безопасной конфигурацией"""
+    config = DBConfig.get_config()
+    return psycopg2.connect(**config)
 
 
 def load_message_codes():
@@ -18,7 +18,7 @@ def load_message_codes():
         return _codes_cache
 
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = _get_connection()
         query = """
             SELECT name_or_code, description_ru
             FROM master_data

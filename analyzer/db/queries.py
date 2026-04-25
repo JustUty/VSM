@@ -1,16 +1,16 @@
-import psycopg2
 import pandas as pd
+from analyzer.db.config import DBConfig
+import psycopg2
 
-DB_CONFIG = {
-    "host": "217.198.83.165",
-    "port": 9030,
-    "database": "vsm_service_trains",
-    "user": "tmp",
-    "password": "ngqU-5Gk9J"
-}
+
+def _get_connection():
+    """Создаёт подключение к БД с безопасной конфигурацией"""
+    config = DBConfig.get_config()
+    return psycopg2.connect(**config)
+
 
 def get_trains_list():
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = _get_connection()
     query = """
         SELECT train_name, train_desc, active_number
         FROM trains
@@ -20,8 +20,9 @@ def get_trains_list():
     conn.close()
     return df
 
+
 def get_events(train_id, dt_from, dt_to, limit=100000):
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = _get_connection()
     query = """
         SELECT 
             occts as timestamp,
@@ -41,8 +42,9 @@ def get_events(train_id, dt_from, dt_to, limit=100000):
     conn.close()
     return df
 
+
 def get_event_stats(train_id, dt_from, dt_to):
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = _get_connection()
     query = """
         SELECT 
             DATE(occts) as event_date,

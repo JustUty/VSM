@@ -1,19 +1,17 @@
-import psycopg2
 import pandas as pd
 from functools import lru_cache
-
-DB_CONFIG = {
-    "host": "217.198.83.165",
-    "port": 9030,
-    "database": "vsm_service_trains",
-    "user": "tmp",
-    "password": "ngqU-5Gk9J"
-}
+from analyzer.db.config import DBConfig
+import psycopg2
 
 
 class MessageDecoder:
     def __init__(self):
         self.codes_cache = None
+
+    def _get_connection(self):
+        """Создаёт подключение к БД с безопасной конфигурацией"""
+        config = DBConfig.get_config()
+        return psycopg2.connect(**config)
 
     def load_codes(self):
         """Загружает все коды и описания из master_data для Velaro"""
@@ -21,7 +19,7 @@ class MessageDecoder:
             return self.codes_cache
 
         try:
-            conn = psycopg2.connect(**DB_CONFIG)
+            conn = self._get_connection()
             query = """
                 SELECT name_or_code, description_ru
                 FROM master_data
