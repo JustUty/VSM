@@ -9,6 +9,7 @@ def get_train_type(train_name, train_desc):
     """Определяет тип поезда по имени и описанию"""
     name_lower = train_name.lower()
     desc_lower = train_desc.lower()
+
     if 'velaro' in name_lower or 'velaro' in desc_lower or 'velarorus' in name_lower:
         return 'Velaro'
     elif 'desiro' in name_lower or 'desirorus' in name_lower or 'эс' in desc_lower:
@@ -31,7 +32,6 @@ def load_trains_data():
         human_to_train_id[train_desc] = train_name
         train_id_to_human[train_name] = train_desc
 
-    # Группируем по типу
     desiro_trains = {}
     velaro_trains = {}
 
@@ -54,14 +54,13 @@ def load_trains_data():
 
 def render_train_selector(key_prefix, trains_data, default_train_id=None):
     """
-    Рендерит селектор выбора поезда
-    Возвращает train_id
+    Рендерит селектор выбора поезда.
+    Возвращает train_id.
     """
     desiro_trains = trains_data['desiro_trains']
     velaro_trains = trains_data['velaro_trains']
     train_id_to_human = trains_data['train_id_to_human']
 
-    # Определяем дефолтный тип и значения
     default_type = "Desiro"
     default_series = None
     default_number = None
@@ -69,15 +68,16 @@ def render_train_selector(key_prefix, trains_data, default_train_id=None):
 
     if default_train_id and default_train_id in train_id_to_human:
         default_human = train_id_to_human[default_train_id]
+
         if default_human in desiro_trains:
             default_type = "Desiro"
             if '-' in default_human:
                 default_series, default_number = default_human.split('-', 1)
+
         elif default_human in velaro_trains:
             default_type = "Velaro"
             default_velaro = default_human
 
-    # Выбор типа поезда
     selected_train_type = st.radio(
         "Тип поезда",
         options=["Desiro", "Velaro"],
@@ -96,7 +96,6 @@ def render_train_selector(key_prefix, trains_data, default_train_id=None):
         return ""
 
     if selected_train_type == "Desiro":
-        # Парсим серии и номера
         series_set = set()
         number_by_series = {}
 
@@ -104,16 +103,18 @@ def render_train_selector(key_prefix, trains_data, default_train_id=None):
             if '-' in human_name:
                 series, number = human_name.split('-', 1)
                 series_set.add(series)
+
                 if series not in number_by_series:
                     number_by_series[series] = []
+
                 if number not in number_by_series[series]:
                     number_by_series[series].append(number)
 
         series_list = sorted(series_set)
+
         for series in number_by_series:
             number_by_series[series] = sorted(number_by_series[series])
 
-        # Выбор серии
         series_index = 0
         if default_series and default_series in series_list:
             series_index = series_list.index(default_series)
@@ -144,32 +145,38 @@ def render_train_selector(key_prefix, trains_data, default_train_id=None):
         st.caption(f"Выбран поезд: **{human_name}**")
         return train_id
 
-    else:  # Velaro
-        velaro_list = list(available_trains.keys())
+    velaro_list = list(available_trains.keys())
 
-        velaro_index = 0
-        if default_velaro and default_velaro in velaro_list:
-            velaro_index = velaro_list.index(default_velaro)
+    velaro_index = 0
+    if default_velaro and default_velaro in velaro_list:
+        velaro_index = velaro_list.index(default_velaro)
 
-        selected_velaro = st.selectbox(
-            "Выберите поезд Velaro",
-            options=velaro_list,
-            index=velaro_index,
-            key=f"{key_prefix}_velaro"
-        )
+    selected_velaro = st.selectbox(
+        "Выберите поезд Velaro",
+        options=velaro_list,
+        index=velaro_index,
+        key=f"{key_prefix}_velaro"
+    )
 
-        train_id = available_trains.get(selected_velaro, "")
-        st.caption(f"Выбран поезд: **{selected_velaro}**")
-        return train_id
+    train_id = available_trains.get(selected_velaro, "")
+    st.caption(f"Выбран поезд: **{selected_velaro}**")
+    return train_id
 
 
 def render_column_selector(default_columns=None):
     """
-    Рендерит мультивыбор колонок для отображения
-    Возвращает список выбранных колонок
+    Рендерит мультивыбор колонок для отображения.
+    Возвращает список выбранных колонок.
     """
     if default_columns is None:
-        default_columns = ['train_id', 'carnumber', 'messagecode', 'event_type', 'timestamp', 'message_text']
+        default_columns = [
+            'train_id',
+            'carnumber',
+            'messagecode',
+            'event_type',
+            'timestamp',
+            'message_text'
+        ]
 
     all_columns_map = {
         'train_id': 'Номер поезда',
@@ -181,35 +188,34 @@ def render_column_selector(default_columns=None):
         'parsingtime': 'Время парсинга'
     }
 
-    with st.expander("⚙️ Настроить отображаемые колонки"):
-        st.caption("Выберите колонки, которые будут отображаться в таблице и экспортироваться")
+    st.caption("Выберите колонки, которые будут отображаться в таблице и экспортироваться")
 
-        # Используем отдельный ключ для хранения выбора
-        if "selected_columns" not in st.session_state:
+    if "selected_columns" not in st.session_state:
+        st.session_state.selected_columns = default_columns
+
+    selected_keys = st.multiselect(
+        "Отображаемые колонки",
+        options=list(all_columns_map.keys()),
+        format_func=lambda x: all_columns_map[x],
+        default=st.session_state.selected_columns,
+        key="column_selector_widget"
+    )
+
+    st.session_state.selected_columns = selected_keys
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("Все колонки", use_container_width=True):
+            st.session_state.selected_columns = list(all_columns_map.keys())
+            st.rerun()
+
+    with col2:
+        if st.button("Сбросить", use_container_width=True):
             st.session_state.selected_columns = default_columns
+            st.rerun()
 
-        selected_keys = st.multiselect(
-            "Отображаемые колонки",
-            options=list(all_columns_map.keys()),
-            format_func=lambda x: all_columns_map[x],
-            default=st.session_state.selected_columns,
-            key="column_selector_widget"
-        )
-
-        # Обновляем session_state
-        st.session_state.selected_columns = selected_keys
-
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Все колонки", width="stretch"):
-                st.session_state.selected_columns = list(all_columns_map.keys())
-                st.rerun()
-        with col2:
-            if st.button("Сбросить", width="stretch"):
-                st.session_state.selected_columns = default_columns
-                st.rerun()
-
-        return st.session_state.selected_columns
+    return st.session_state.selected_columns
 
 
 def render_filters():
@@ -222,7 +228,6 @@ def render_filters():
         try:
             trains_data = load_trains_data()
 
-            # Выбор режима: один или два поезда
             st.subheader("Режим анализа")
 
             mode_options = ["Один поезд", "Два поезда"]
@@ -242,7 +247,6 @@ def render_filters():
 
             st.markdown("---")
 
-            # Восстанавливаем сохранённые значения
             saved_train_id_1 = None
             saved_train_id_2 = None
 
@@ -250,7 +254,6 @@ def render_filters():
                 saved_train_id_1 = st.session_state.submitted_filters.get("train_id")
                 saved_train_id_2 = st.session_state.submitted_filters.get("train_id_2")
 
-            # Рендерим первый селектор
             st.subheader("Поезд №1")
             train_id_1 = render_train_selector("train1", trains_data, saved_train_id_1)
 
@@ -263,7 +266,6 @@ def render_filters():
         except Exception as e:
             st.error(f"Ошибка загрузки списка поездов: {e}")
 
-            # Fallback: ручной ввод для первого поезда
             default_train_id_1 = ""
             default_train_id_2 = ""
 
@@ -292,52 +294,66 @@ def render_filters():
         st.markdown("---")
         st.subheader("Временной интервал")
 
-        # Дефолтные значения
         default_to = datetime.now()
         default_from = default_to - timedelta(days=7)
 
-        # Восстанавливаем из сессии, если есть
         if st.session_state.submitted_filters is not None:
             default_from = st.session_state.submitted_filters.get("dt_from", default_from)
             default_to = st.session_state.submitted_filters.get("dt_to", default_to)
 
-        # Создаём переменные для хранения текущих значений в сессии
         if "demo_dt_from" not in st.session_state:
             st.session_state.demo_dt_from = default_from
+
         if "demo_dt_to" not in st.session_state:
             st.session_state.demo_dt_to = default_to
 
-        # Кнопка "Демонстрация"
         demo_btn = st.button(
             "Демонстрация",
             help="Установить интервал: позавчера 13:00 → позавчера 17:00",
-            width="stretch"
+            use_container_width=True
         )
 
         if demo_btn:
-            # Устанавливаем: позавчера с 13:00:00 до 17:00:00
             day_before_yesterday = datetime.now().replace(
-                hour=13, minute=0, second=0, microsecond=0
+                hour=13,
+                minute=0,
+                second=0,
+                microsecond=0
             ) - timedelta(days=2)
+
             st.session_state.demo_dt_from = day_before_yesterday
             st.session_state.demo_dt_to = day_before_yesterday + timedelta(hours=4)
 
-        # Отображаем datetime_input
-        dt_from = st.datetime_input(
-            "Начальная дата и время",
-            value=st.session_state.demo_dt_from,
-            key="dt_from_input"
+        from_date = st.date_input(
+            "Начальная дата",
+            value=st.session_state.demo_dt_from.date(),
+            key="dt_from_date_input"
         )
 
-        dt_to = st.datetime_input(
-            "Конечная дата и время",
-            value=st.session_state.demo_dt_to,
-            key="dt_to_input"
+        from_time = st.time_input(
+            "Начальное время",
+            value=st.session_state.demo_dt_from.time(),
+            key="dt_from_time_input"
         )
 
-        # Обновляем demo_* при ручном изменении
+        to_date = st.date_input(
+            "Конечная дата",
+            value=st.session_state.demo_dt_to.date(),
+            key="dt_to_date_input"
+        )
+
+        to_time = st.time_input(
+            "Конечное время",
+            value=st.session_state.demo_dt_to.time(),
+            key="dt_to_time_input"
+        )
+
+        dt_from = datetime.combine(from_date, from_time)
+        dt_to = datetime.combine(to_date, to_time)
+
         if dt_from != st.session_state.demo_dt_from:
             st.session_state.demo_dt_from = dt_from
+
         if dt_to != st.session_state.demo_dt_to:
             st.session_state.demo_dt_to = dt_to
 
@@ -346,7 +362,7 @@ def render_filters():
         analyze_btn = st.button(
             "Сформировать протокол",
             type="primary",
-            width="stretch"
+            use_container_width=True
         )
 
         if analyze_btn:
