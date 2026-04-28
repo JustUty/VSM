@@ -38,24 +38,95 @@ def format_datetime(dt):
             return str(dt)
     return str(dt)
 
+def format_car_number(carnumber):
+    """Преобразует номер вагона в формат +100, +200, +300 и т.д."""
+    car = clean_text(carnumber)
+
+    if not car:
+        return ''
+
+    last_two = car[-2:]
+
+    if last_two.isdigit():
+        car_index = int(last_two)
+        if car_index > 0:
+            return f'+{car_index * 100}'
+
+    return car
+
+
+def add_brackets_to_ds_code(text, code):
+    """Добавляет квадратные скобки к коду ДС в тексте сообщения."""
+    text = clean_text(text)
+    code = clean_text(code)
+
+    if not text or not code:
+        return text
+
+    text = re.sub(
+        rf'\bДС\s+{re.escape(code)}\b',
+        f'ДС [{code}]',
+        text
+    )
+
+    if f'[{code}]' not in text and code in text:
+        text = text.replace(code, f'[{code}]', 1)
+
+    return text
+
+
+def get_protocol_message_text(row):
+    """Получает текст сообщения для человекочитаемого протокола."""
+
+    code = clean_text(row.get('messagecode', ''))
+    event_type = clean_text(row.get('event_type', ''))
+    message_text = clean_text(row.get('message_text', ''))
+
+    templates = get_human_message_templates(code)
+
+    # Выбираем нужный шаблон
+    if event_type == 'activation':
+        text = templates.get('kurztext_3') or message_text
+
+    elif event_type == 'deactivation':
+        text = templates.get('kurztext_4') or message_text
+
+    else:
+        text = message_text or templates.get('kurztext_2', '')
+
+    text = clean_text(text)
+
+    # Если есть "ДС 44051" → делаем "ДС [44051]"
+    text = re.sub(
+        rf'\bДС\s+{re.escape(code)}\b',
+        f'ДС [{code}]',
+        text
+    )
+
+    # Если код уже есть в квадратных скобках — ничего не делаем
+    if f'[{code}]' in text:
+        return text
+
+    # Если код вообще отсутствует — добавляем в начало
+    return f'[{code}] {text}'
+
 
 def build_human_readable_entry(row):
     """Формирует человекочитаемый текстовый блок для одной записи"""
-    code = clean_text(row.get('messagecode', ''))
     train_id = clean_text(row.get('train_id', ''))
-    carnumber = clean_text(row.get('carnumber', ''))
+    carnumber = format_car_number(row.get('carnumber', ''))
     timestamp = row.get('timestamp', None)
-    message_text = clean_text(row.get('message_text', ''))
 
     timestamp_str = format_datetime(timestamp)
+    message_text = get_protocol_message_text(row)
 
     lines = []
 
     header_parts = []
-    if code:
-        header_parts.append(f'Код ДС {code}')
+
     if train_id:
         header_parts.append(f'поезд {train_id}')
+
     if carnumber:
         header_parts.append(f'вагон {carnumber}')
 
@@ -65,7 +136,7 @@ def build_human_readable_entry(row):
     if timestamp_str and message_text:
         lines.append(f'{timestamp_str} {message_text}.')
     elif timestamp_str:
-        lines.append(f'{timestamp_str} Зафиксировано событие по коду ДС {code}.')
+        lines.append(f'{timestamp_str} Зафиксировано диагностическое сообщение.')
 
     return '\n'.join(lines)
 
@@ -219,10 +290,9 @@ def export_human_readable_docx(timeline_df, train_human_name, dt_from, dt_to, se
         if timeline_df.empty:
             doc.add_paragraph('За указанный период диагностические события не обнаружены.')
         else:
-            for idx, (_, row) in enumerate(timeline_df.iterrows(), start=1):
+            for _, row in timeline_df.iterrows():
                 entry_text = build_human_readable_entry(row)
 
-                doc.add_paragraph(f'Событие {idx}')
                 for line in entry_text.split('\n'):
                     if line.strip():
                         doc.add_paragraph(clean_text(line))

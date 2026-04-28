@@ -11,10 +11,10 @@ from analyzer.handlers.export import (
     export_human_readable_docx,
     export_to_xlsx,
     export_to_csv,
-    build_human_readable_protocol_text,
     export_text_to_docx,
     get_column_names_map
 )
+from analyzer.llm.hybrid_protocol_builder import build_hybrid_protocol_text
 
 
 def render_main_page():
@@ -101,6 +101,13 @@ def render_main_page():
 
                     column_names_map = get_column_names_map()
 
+                    if mode == "Два поезда":
+                        train_name_str = " и ".join(timeline_df['train_id'].unique())
+                        train_names_for_file = "_and_".join(timeline_df['train_id'].unique())
+                    else:
+                        train_name_str = train_mapping.get(train_id_1, train_id_1)
+                        train_names_for_file = train_name_str
+
                     with st.expander("Статистика", expanded=True):
                         col1, col2, col3, col4 = st.columns(4)
 
@@ -172,48 +179,61 @@ def render_main_page():
                             st.info("Нет данных для отображения")
 
                     st.markdown("---")
-                    with st.expander("Предпросмотр и редактирование протокола", expanded=False):
-                        if mode == "Два поезда":
-                            train_names = timeline_df['train_id'].unique()
-                            train_name_str = " и ".join(train_names)
-                        else:
-                            train_name_str = train_mapping.get(train_id_1, train_id_1)
 
-                        protocol_text = build_human_readable_protocol_text(
-                            timeline_df,
-                            train_name_str,
-                            filters['dt_from'],
-                            filters['dt_to']
+                    with st.expander("Интеллектуальное формирование протокола", expanded=False):
+                        st.markdown(
+                            """
+                            В данном модуле формируется расширенная человекочитаемая версия эксплуатационного протокола.
+
+                            Локальная языковая модель создаёт вступительное резюме и заключение на основе агрегированной сводки диагностических сообщений. 
+                            Основная хронология событий формируется алгоритмически, без изменения исходных временных меток, кодов ДС, номеров поездов и вагонов.
+
+                            После формирования текст можно вручную отредактировать и скачать в формате DOCX.
+                            """
                         )
 
-                        st.caption(
-                            "Ниже отображается человекочитаемая версия протокола. "
-                            "Текст можно отредактировать вручную и скачать в формате DOCX."
-                        )
+                        hybrid_state_key = "hybrid_protocol_text"
 
-                        edited_protocol_text = st.text_area(
-                            "Текст протокола",
-                            value=protocol_text,
-                            height=500,
-                            key="edited_protocol_text"
-                        )
+                        if st.button(
+                            "Сформировать интеллектуальный протокол",
+                            type="primary",
+                            use_container_width=True
+                        ):
+                            with st.spinner("Локальная модель формирует резюме и заключение протокола..."):
+                                st.session_state[hybrid_state_key] = build_hybrid_protocol_text(
+                                    timeline_df=timeline_df,
+                                    train_name=train_name_str,
+                                    dt_from=filters['dt_from'],
+                                    dt_to=filters['dt_to'],
+                                    max_groups=30
+                                )
 
-                        edited_docx_data = export_text_to_docx(edited_protocol_text)
-
-                        if edited_docx_data:
-                            st.download_button(
-                                label="Скачать отредактированный DOCX",
-                                data=edited_docx_data,
-                                file_name=(
-                                    f"protocol_edited_{train_name_str}_"
-                                    f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-                                ),
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                use_container_width=True,
-                                key="download_edited_docx"
+                        if hybrid_state_key in st.session_state:
+                            edited_hybrid_text = st.text_area(
+                                "Текст интеллектуального протокола",
+                                value=st.session_state[hybrid_state_key],
+                                height=650,
+                                key="edited_hybrid_protocol_text"
                             )
+
+                            hybrid_docx_data = export_text_to_docx(edited_hybrid_text)
+
+                            if hybrid_docx_data:
+                                st.download_button(
+                                    label="Скачать интеллектуальный протокол (DOCX)",
+                                    data=hybrid_docx_data,
+                                    file_name=(
+                                        f"protocol_intelligent_{train_names_for_file}_"
+                                        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                                    ),
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    use_container_width=True,
+                                    key="download_hybrid_docx"
+                                )
+                            else:
+                                st.error("Ошибка формирования DOCX из текста интеллектуального протокола")
                         else:
-                            st.error("Ошибка формирования отредактированного DOCX")
+                            st.info("Нажмите кнопку выше, чтобы сформировать интеллектуальный протокол.")
 
                     st.markdown("---")
                     st.subheader("Экспорт файлов")
@@ -238,56 +258,50 @@ def render_main_page():
                     export_mime = None
 
                     timestamp_suffix = datetime.now().strftime('%Y%m%d_%H%M%S')
-
-                    if mode == "Два поезда":
-                        train_names = "_and_".join(timeline_df['train_id'].unique())
-                    else:
-                        train_names = train_mapping.get(train_id_1, train_id_1)
-
                     selected_cols = st.session_state.get('selected_columns', None)
 
                     if selected_export_type == "docx_table":
                         export_data = export_to_docx(
                             timeline_df,
-                            train_names,
+                            train_names_for_file,
                             filters['dt_from'],
                             filters['dt_to'],
                             selected_columns=selected_cols
                         )
-                        export_file_name = f"protocol_table_{train_names}_{timestamp_suffix}.docx"
+                        export_file_name = f"protocol_table_{train_names_for_file}_{timestamp_suffix}.docx"
                         export_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
                     elif selected_export_type == "docx_human":
                         export_data = export_human_readable_docx(
                             timeline_df,
-                            train_names,
+                            train_names_for_file,
                             filters['dt_from'],
                             filters['dt_to'],
                             selected_columns=selected_cols
                         )
-                        export_file_name = f"protocol_human_{train_names}_{timestamp_suffix}.docx"
+                        export_file_name = f"protocol_human_{train_names_for_file}_{timestamp_suffix}.docx"
                         export_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
                     elif selected_export_type == "xlsx":
                         export_data = export_to_xlsx(
                             timeline_df,
-                            train_names,
+                            train_names_for_file,
                             filters['dt_from'],
                             filters['dt_to'],
                             selected_columns=selected_cols
                         )
-                        export_file_name = f"protocol_{train_names}_{timestamp_suffix}.xlsx"
+                        export_file_name = f"protocol_{train_names_for_file}_{timestamp_suffix}.xlsx"
                         export_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
                     elif selected_export_type == "csv":
                         export_data = export_to_csv(
                             timeline_df,
-                            train_names,
+                            train_names_for_file,
                             filters['dt_from'],
                             filters['dt_to'],
                             selected_columns=selected_cols
                         )
-                        export_file_name = f"protocol_{train_names}_{timestamp_suffix}.csv"
+                        export_file_name = f"protocol_{train_names_for_file}_{timestamp_suffix}.csv"
                         export_mime = "text/csv"
 
                     if export_data:
@@ -320,8 +334,9 @@ def render_main_page():
             4. Укажите **временной интервал** (начало и конец периода)
             5. Нажмите кнопку **«Сформировать протокол»**
             6. При необходимости настройте **отображаемые колонки**
-            7. Выберите нужный формат в разделе **«Экспорт файлов»**
-            8. Нажмите кнопку **«Скачать протокол»**
+            7. При необходимости сформируйте интеллектуальный протокол
+            8. Выберите нужный формат в разделе **«Экспорт файлов»**
+            9. Нажмите кнопку **«Скачать протокол»**
             """)
 
 
